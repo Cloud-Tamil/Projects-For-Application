@@ -1,0 +1,90 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Product Microservice</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <nav>
+        <div class="logo">Product Store</div>
+
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/products-page">Products</a>
+            <a href="/docs">API Docs</a>
+        </div>
+    </nav>
+
+    <section class="hero">
+
+        <div class="hero-content">
+
+            <h1>Product Microservice</h1>
+
+            <p>
+                Simple FastAPI + Docker Microservice Application
+            </p>
+
+            <a class="button" href="/products-page">
+                View Products
+            </a>
+
+        </div>
+
+    </section>
+
+
+    <section class="container">
+
+        <h2>Available Products</h2>
+
+        <div class="product-grid">
+
+            {% for product in products %}
+
+            <div class="card">
+
+                <div class="product-icon">
+                    🛒
+                </div>
+
+                <h3>{{ product.name }}</h3>
+
+                <p class="price">
+                    ₹{{ "{:,.2f}".format(product.price) }}
+                </p>
+
+                <a
+                    class="button small"
+                    href="/product/{{ product.id }}"
+                >
+                    View Product
+                </a>
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+    </section>
+
+
+    <footer>
+        <p>
+            Product Microservice &copy; 2026
+        </p>
+    </footer>
+
+</body>
+
+</html>
+```
