@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>ShopSphere</title>
+
+  <style>
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        Arial,
+        sans-serif;
+
+      background: #f5f7fb;
+
+      color: #172033;
+    }
+
+    header {
+      background: #172033;
+
+      color: white;
+
+      padding:
+        22px 8%;
+
+      display: flex;
+
+      justify-content:
+        space-between;
+
+      align-items:
+        center;
+    }
+
+    main {
+      max-width:
+        1100px;
+
+      margin:
+        40px auto;
+
+      padding:
+        0 20px;
+    }
+
+    .grid {
+      display:
+        grid;
+
+      grid-template-columns:
+        repeat(
+          auto-fit,
+          minmax(
+            220px,
+            1fr
+          )
+        );
+
+      gap: 18px;
+    }
+
+    .card {
+      background:
+        white;
+
+      border-radius:
+        12px;
+
+      padding:
+        20px;
+
+      box-shadow:
+        0 4px 16px
+        rgba(
+          0,
+          0,
+          0,
+          0.08
+        );
+    }
+
+    button {
+      background:
+        #172033;
+
+      color:
+        white;
+
+      border:
+        0;
+
+      border-radius:
+        8px;
+
+      padding:
+        10px 14px;
+
+      cursor:
+        pointer;
+    }
+
+    button:hover {
+      opacity:
+        0.85;
+    }
+
+    #status {
+      margin:
+        20px 0;
+
+      padding:
+        12px;
+
+      border-radius:
+        8px;
+
+      background:
+        white;
+    }
+
+  </style>
+
+</head>
+
+<body>
+
+  <header>
+
+    <strong>
+      ShopSphere
+    </strong>
+
+    <span>
+      Microservices Demo
+    </span>
+
+  </header>
+
+  <main>
+
+    <h1>
+      E-Commerce Store
+    </h1>
+
+    <div id="status">
+      Loading products...
+    </div>
+
+    <div
+      id="products"
+      class="grid"
+    ></div>
+
+  </main>
+
+  <script>
+
+    async function loadProducts() {
+
+      const status =
+        document.getElementById(
+          "status"
+        );
+
+      try {
+
+        const response =
+          await fetch(
+            "/api/products/products"
+          );
+
+        const data =
+          await response.json();
+
+        document.getElementById(
+          "products"
+        ).innerHTML =
+          data.products
+            .map(
+              product => `
+
+                <article class="card">
+
+                  <h3>
+                    ${product.name}
+                  </h3>
+
+                  <p>
+                    ${product.category}
+                  </p>
+
+                  <strong>
+                    ₹${product.price}
+                  </strong>
+
+                  <p>
+                    Stock:
+                    ${product.stock}
+                  </p>
+
+                  <button
+                    onclick="
+                      addToCart(
+                        '${product.id}',
+                        '${product.name}',
+                        ${product.price}
+                      )
+                    "
+                  >
+                    Add to cart
+                  </button>
+
+                </article>
+
+              `
+            )
+            .join("");
+
+        status.textContent =
+          `${data.count} products available`;
+
+      } catch (error) {
+
+        status.textContent =
+          "Unable to load products: " +
+          error.message;
+      }
+    }
+
+    async function addToCart(
+      productId,
+      name,
+      price
+    ) {
+
+      const response =
+        await fetch(
+          "/api/cart/carts/items",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+                userId:
+                  "demo-user",
+
+                productId,
+
+                name,
+
+                price,
+
+                quantity: 1
+              })
+          }
+        );
+
+      const data =
+        await response.json();
+
+      alert(
+        response.ok
+          ? `${name} added to cart`
+          : data.error
+      );
+    }
+
+    loadProducts();
+
+  </script>
+
+</body>
+
+</html>
