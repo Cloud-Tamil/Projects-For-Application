@@ -4,7 +4,8 @@ ARG SERVICE
 
 WORKDIR /app
 
-COPY . .
+COPY services ./services
+COPY package.json ./
 
 ENV NODE_ENV=production
 ENV SERVICE=${SERVICE}
