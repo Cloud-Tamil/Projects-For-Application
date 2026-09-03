@@ -2,11 +2,9 @@
   "name": "shopsphere",
   "version": "1.0.0",
   "private": true,
-  "description": "ShopSphere e-commerce microservices Docker MVP",
+  "description": "ShopSphere e-commerce microservices application",
   "scripts": {
-    "test": "node --test tests/integration.test.js"
-  },
-  "engines": {
-    "node": ">=22"
+    "test": "node --test tests/structure.test.js",
+    "test:smoke": "node --test tests/smoke.test.js"
   }
 }
