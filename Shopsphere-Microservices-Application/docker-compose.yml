@@ -1,9 +1,5 @@
 services:
 
-  # =========================================================
-  # API GATEWAY
-  # =========================================================
-
   gateway:
     build:
       context: .
@@ -16,6 +12,7 @@ services:
 
     environment:
       PORT: 18080
+
       JWT_SECRET: shopsphere-local-secret
 
       AUTH_URL: http://auth-service:4001
@@ -25,21 +22,42 @@ services:
       PAYMENT_URL: http://payment-service:4005
 
     depends_on:
-      - auth-service
-      - product-service
-      - cart-service
-      - order-service
-      - payment-service
+      auth-service:
+        condition: service_healthy
 
+      product-service:
+        condition: service_healthy
 
-  # =========================================================
-  # AUTH SERVICE
-  # =========================================================
+      cart-service:
+        condition: service_healthy
+
+      order-service:
+        condition: service_healthy
+
+      payment-service:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:18080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
   auth-service:
     build:
       context: .
       dockerfile: docker/service.Dockerfile
+
       args:
         SERVICE: auth
 
@@ -48,19 +66,32 @@ services:
     environment:
       PORT: 4001
       JWT_SECRET: shopsphere-local-secret
+      DATA_DIR: /app/data
 
     volumes:
-      - auth-data:/app/data
+      - ./data/auth:/app/data
 
+    restart: unless-stopped
 
-  # =========================================================
-  # PRODUCT SERVICE
-  # =========================================================
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
   product-service:
     build:
       context: .
       dockerfile: docker/service.Dockerfile
+
       args:
         SERVICE: product
 
@@ -68,19 +99,32 @@ services:
 
     environment:
       PORT: 4002
+      DATA_DIR: /app/data
 
     volumes:
-      - product-data:/app/data
+      - ./data/product:/app/data
 
+    restart: unless-stopped
 
-  # =========================================================
-  # CART SERVICE
-  # =========================================================
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
   cart-service:
     build:
       context: .
       dockerfile: docker/service.Dockerfile
+
       args:
         SERVICE: cart
 
@@ -89,19 +133,37 @@ services:
     environment:
       PORT: 4003
       JWT_SECRET: shopsphere-local-secret
+      PRODUCT_URL: http://product-service:4002
+      DATA_DIR: /app/data
 
     volumes:
-      - cart-data:/app/data
+      - ./data/cart:/app/data
 
+    depends_on:
+      product-service:
+        condition: service_healthy
 
-  # =========================================================
-  # ORDER SERVICE
-  # =========================================================
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
   order-service:
     build:
       context: .
       dockerfile: docker/service.Dockerfile
+
       args:
         SERVICE: order
 
@@ -114,22 +176,40 @@ services:
       PRODUCT_URL: http://product-service:4002
       PAYMENT_URL: http://payment-service:4005
 
-    depends_on:
-      - product-service
-      - payment-service
+      DATA_DIR: /app/data
 
     volumes:
-      - order-data:/app/data
+      - ./data/order:/app/data
 
+    depends_on:
 
-  # =========================================================
-  # PAYMENT SERVICE
-  # =========================================================
+      product-service:
+        condition: service_healthy
+
+      payment-service:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4004/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
   payment-service:
     build:
       context: .
       dockerfile: docker/service.Dockerfile
+
       args:
         SERVICE: payment
 
@@ -138,19 +218,22 @@ services:
     environment:
       PORT: 4005
       JWT_SECRET: shopsphere-local-secret
+      DATA_DIR: /app/data
 
     volumes:
-      - payment-data:/app/data
+      - ./data/payment:/app/data
 
+    restart: unless-stopped
 
-# ===========================================================
-# PERSISTENT LOCAL VOLUMES
-# ===========================================================
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4005/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
 
-volumes:
-
-  auth-data:
-  product-data:
-  cart-data:
-  order-data:
-  payment-data:
+      interval: 10s
+      timeout: 5s
+      retries: 5
