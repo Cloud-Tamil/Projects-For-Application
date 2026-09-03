@@ -1,0 +1,11 @@
+node_modules/
+.git/
+.gitignore
+.github/
+
+# Local runtime state should never be baked into images
+data/**/*.json
+data/**/*.tmp
+
+*.log
+README.md
