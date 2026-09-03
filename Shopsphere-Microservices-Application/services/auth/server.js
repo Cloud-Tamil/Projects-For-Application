@@ -1,243 +1,142 @@
 const {
-    json,
-    readBody,
-    load,
-    save,
-    id,
-    hash,
-    verify,
-    sign,
-    server
+  json,
+  readBody,
+  load,
+  save,
+  id,
+  hashPassword,
+  verifyPassword,
+  signJwt,
+  server
 } = require("../common");
 
-
-const PORT =
-    Number(process.env.PORT || 4001);
-
+const PORT = Number(process.env.PORT || 4001);
 
 const JWT_SECRET =
-    process.env.JWT_SECRET ||
-    "shopsphere-local-secret";
+  process.env.JWT_SECRET || "shopsphere-local-secret";
 
+function validEmail(email) {
+  return (
+    typeof email === "string" &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  );
+}
 
-let users =
-    load("auth.json", []);
+async function handler(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
 
+  if (req.method === "GET" && url.pathname === "/health") {
+    return json(res, 200, {
+      service: "auth",
+      status: "UP"
+    });
+  }
 
-// ============================================================
-// SERVER
-// ============================================================
+  if (req.method === "POST" && url.pathname === "/register") {
+    const body = await readBody(req);
 
-server(async (req, res) => {
+    const email = String(body.email || "")
+      .trim()
+      .toLowerCase();
 
+    const password = String(body.password || "");
 
-    // --------------------------------------------------------
-    // HEALTH
-    // --------------------------------------------------------
+    const name = String(body.name || "")
+      .trim();
 
-    if (req.url === "/health") {
-
-        return json(
-            res,
-            200,
-            {
-                service: "auth",
-                status: "UP"
-            }
-        );
+    if (!name) {
+      return json(res, 400, {
+        error: "Name is required"
+      });
     }
 
-
-    // --------------------------------------------------------
-    // REGISTER
-    // --------------------------------------------------------
-
-    if (
-        req.method === "POST" &&
-        req.url === "/register"
-    ) {
-
-        const body =
-            await readBody(req);
-
-
-        const email =
-            String(
-                body.email || ""
-            )
-                .trim()
-                .toLowerCase();
-
-
-        const password =
-            String(
-                body.password || ""
-            );
-
-
-        if (
-            !email ||
-            password.length < 6
-        ) {
-
-            return json(
-                res,
-                400,
-                {
-                    error:
-                        "email and password (min 6 chars) required"
-                }
-            );
-        }
-
-
-        if (
-            users.some(
-                user =>
-                    user.email === email
-            )
-        ) {
-
-            return json(
-                res,
-                409,
-                {
-                    error:
-                        "email exists"
-                }
-            );
-        }
-
-
-        const user = {
-
-            id: id("usr"),
-
-            email,
-
-            password:
-                hash(password),
-
-            name:
-                String(
-                    body.name ||
-                    email
-                ),
-
-            role: "CUSTOMER"
-        };
-
-
-        users.push(user);
-
-        save(
-            "auth.json",
-            users
-        );
-
-
-        return json(
-            res,
-            201,
-            {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                role: user.role
-            }
-        );
+    if (!validEmail(email)) {
+      return json(res, 400, {
+        error: "Valid email is required"
+      });
     }
 
-
-    // --------------------------------------------------------
-    // LOGIN
-    // --------------------------------------------------------
-
-    if (
-        req.method === "POST" &&
-        req.url === "/login"
-    ) {
-
-        const body =
-            await readBody(req);
-
-
-        const email =
-            String(
-                body.email || ""
-            )
-                .trim()
-                .toLowerCase();
-
-
-        const user =
-            users.find(
-                item =>
-                    item.email === email
-            );
-
-
-        if (
-            !user ||
-            !verify(
-                String(
-                    body.password || ""
-                ),
-                user.password
-            )
-        ) {
-
-            return json(
-                res,
-                401,
-                {
-                    error:
-                        "invalid credentials"
-                }
-            );
-        }
-
-
-        const token =
-            sign(
-                {
-                    sub: user.id,
-                    email: user.email,
-                    name: user.name,
-                    role: user.role,
-
-                    exp:
-                        Math.floor(
-                            Date.now() / 1000
-                        ) + 86400
-                },
-
-                JWT_SECRET
-            );
-
-
-        return json(
-            res,
-            200,
-            {
-                token
-            }
-        );
+    if (password.length < 6) {
+      return json(res, 400, {
+        error: "Password must contain at least 6 characters"
+      });
     }
 
+    const users = load("auth.json", []);
 
-    return json(
-        res,
-        404,
-        {
-            error: "not found"
-        }
+    if (users.some(user => user.email === email)) {
+      return json(res, 409, {
+        error: "User already exists"
+      });
+    }
+
+    const user = {
+      id: id("usr"),
+      name,
+      email,
+      passwordHash: hashPassword(password),
+      createdAt: new Date().toISOString()
+    };
+
+    users.push(user);
+
+    save("auth.json", users);
+
+    return json(res, 201, {
+      message: "Registration successful",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email
+      }
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/login") {
+    const body = await readBody(req);
+
+    const email = String(body.email || "")
+      .trim()
+      .toLowerCase();
+
+    const password = String(body.password || "");
+
+    const users = load("auth.json", []);
+
+    const user = users.find(
+      item => item.email === email
     );
 
-}).listen(
-    PORT,
-    () =>
-        console.log(
-            `auth-service listening on ${PORT}`
-        )
-);
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      return json(res, 401, {
+        error: "Invalid email or password"
+      });
+    }
+
+    const token = signJwt(
+      {
+        sub: user.id,
+        name: user.name,
+        email: user.email
+      },
+      JWT_SECRET,
+      60 * 60 * 8
+    );
+
+    return json(res, 200, {
+      message: "Login successful",
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email
+      }
+    });
+  }
+
+  return json(res, 404, {
+    error: "Route not found"
+  });
+}
+
+server(handler);
