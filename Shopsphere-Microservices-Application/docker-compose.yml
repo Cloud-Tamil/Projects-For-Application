@@ -1,0 +1,156 @@
+services:
+
+  # =========================================================
+  # API GATEWAY
+  # =========================================================
+
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+
+    container_name: shopsphere-gateway
+
+    ports:
+      - "18080:18080"
+
+    environment:
+      PORT: 18080
+      JWT_SECRET: shopsphere-local-secret
+
+      AUTH_URL: http://auth-service:4001
+      PRODUCT_URL: http://product-service:4002
+      CART_URL: http://cart-service:4003
+      ORDER_URL: http://order-service:4004
+      PAYMENT_URL: http://payment-service:4005
+
+    depends_on:
+      - auth-service
+      - product-service
+      - cart-service
+      - order-service
+      - payment-service
+
+
+  # =========================================================
+  # AUTH SERVICE
+  # =========================================================
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: auth
+
+    container_name: shopsphere-auth
+
+    environment:
+      PORT: 4001
+      JWT_SECRET: shopsphere-local-secret
+
+    volumes:
+      - auth-data:/app/data
+
+
+  # =========================================================
+  # PRODUCT SERVICE
+  # =========================================================
+
+  product-service:
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: product
+
+    container_name: shopsphere-product
+
+    environment:
+      PORT: 4002
+
+    volumes:
+      - product-data:/app/data
+
+
+  # =========================================================
+  # CART SERVICE
+  # =========================================================
+
+  cart-service:
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: cart
+
+    container_name: shopsphere-cart
+
+    environment:
+      PORT: 4003
+      JWT_SECRET: shopsphere-local-secret
+
+    volumes:
+      - cart-data:/app/data
+
+
+  # =========================================================
+  # ORDER SERVICE
+  # =========================================================
+
+  order-service:
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: order
+
+    container_name: shopsphere-order
+
+    environment:
+      PORT: 4004
+      JWT_SECRET: shopsphere-local-secret
+
+      PRODUCT_URL: http://product-service:4002
+      PAYMENT_URL: http://payment-service:4005
+
+    depends_on:
+      - product-service
+      - payment-service
+
+    volumes:
+      - order-data:/app/data
+
+
+  # =========================================================
+  # PAYMENT SERVICE
+  # =========================================================
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: payment
+
+    container_name: shopsphere-payment
+
+    environment:
+      PORT: 4005
+      JWT_SECRET: shopsphere-local-secret
+
+    volumes:
+      - payment-data:/app/data
+
+
+# ===========================================================
+# PERSISTENT LOCAL VOLUMES
+# ===========================================================
+
+volumes:
+
+  auth-data:
+  product-data:
+  cart-data:
+  order-data:
+  payment-data:
