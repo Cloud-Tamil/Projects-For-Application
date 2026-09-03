@@ -1,10 +1,20 @@
 {
   "name": "shopsphere",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "ShopSphere e-commerce microservices application",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "test": "node --test tests/structure.test.js",
-    "test:smoke": "node --test tests/smoke.test.js"
+    "test": "node --test tests/integration.test.js",
+    "test:smoke": "node --test tests/smoke.test.js",
+    "test:all": "node --test tests/*.test.js",
+    "start:gateway": "node gateway/server.js",
+    "start:auth": "PORT=4001 DATA_DIR=./data/auth node services/auth/server.js",
+    "start:product": "PORT=4002 DATA_DIR=./data/product node services/product/server.js",
+    "start:cart": "PORT=4003 DATA_DIR=./data/cart PRODUCT_URL=http://localhost:4002 node services/cart/server.js",
+    "start:order": "PORT=4004 DATA_DIR=./data/order PRODUCT_URL=http://localhost:4002 PAYMENT_URL=http://localhost:4005 node services/order/server.js",
+    "start:payment": "PORT=4005 DATA_DIR=./data/payment node services/payment/server.js"
   }
 }
