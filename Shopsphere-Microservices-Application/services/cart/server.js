@@ -1,203 +1,144 @@
 const {
-    json,
-    readBody,
-    load,
-    save,
-    auth,
-    server
+  json,
+  readBody,
+  load,
+  save,
+  id,
+  requireAuth,
+  requestJson,
+  server
 } = require("../common");
 
+const PRODUCT_URL =
+  process.env.PRODUCT_URL ||
+  "http://product-service:4002";
 
-const PORT =
-    Number(process.env.PORT || 4003);
+function getCart(userId) {
+  const carts = load("carts.json", []);
 
+  return (
+    carts.find(cart => cart.userId === userId) || {
+      userId,
+      items: []
+    }
+  );
+}
 
-let carts =
-    load(
-        "carts.json",
-        {}
+function saveCart(cart) {
+  const carts = load("carts.json", []);
+
+  const index = carts.findIndex(
+    item => item.userId === cart.userId
+  );
+
+  if (index === -1) {
+    carts.push(cart);
+  } else {
+    carts[index] = cart;
+  }
+
+  save("carts.json", carts);
+}
+
+async function handler(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (req.method === "GET" && url.pathname === "/health") {
+    return json(res, 200, {
+      service: "cart",
+      status: "UP"
+    });
+  }
+
+  const user = requireAuth(req, res);
+
+  if (!user) {
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/cart") {
+    const cart = getCart(user.sub);
+
+    return json(res, 200, {
+      cart
+    });
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/cart/items"
+  ) {
+    const body = await readBody(req);
+
+    const productId = String(
+      body.productId || ""
     );
 
-
-server(async (req, res) => {
-
-
-    if (req.url === "/health") {
-
-        return json(
-            res,
-            200,
-            {
-                service: "cart",
-                status: "UP"
-            }
-        );
-    }
-
-
-    const user =
-        auth(req);
-
-
-    if (!user) {
-
-        return json(
-            res,
-            401,
-            {
-                error:
-                    "unauthorized"
-            }
-        );
-    }
-
-
-    carts[user.sub] ??= [];
-
-
-    // --------------------------------------------------------
-    // GET CART
-    // --------------------------------------------------------
+    const quantity = Number(body.quantity);
 
     if (
-        req.method === "GET" &&
-        req.url === "/cart"
+      !productId ||
+      !Number.isInteger(quantity) ||
+      quantity <= 0
     ) {
-
-        return json(
-            res,
-            200,
-            {
-                items:
-                    carts[user.sub]
-            }
-        );
+      return json(res, 400, {
+        error: "Valid productId and quantity are required"
+      });
     }
 
-
-    // --------------------------------------------------------
-    // ADD TO CART
-    // --------------------------------------------------------
-
-    if (
-        req.method === "POST" &&
-        req.url === "/cart/items"
-    ) {
-
-        const body =
-            await readBody(req);
-
-
-        const productId =
-            String(
-                body.productId || ""
-            );
-
-
-        const quantity =
-            Number(
-                body.quantity || 1
-            );
-
-
-        if (
-            !productId ||
-            !Number.isInteger(
-                quantity
-            ) ||
-            quantity <= 0
-        ) {
-
-            return json(
-                res,
-                400,
-                {
-                    error:
-                        "productId and positive integer quantity required"
-                }
-            );
-        }
-
-
-        const existing =
-            carts[user.sub].find(
-                item =>
-                    item.productId ===
-                    productId
-            );
-
-
-        if (existing) {
-
-            existing.quantity +=
-                quantity;
-
-        } else {
-
-            carts[user.sub].push({
-                productId,
-                quantity
-            });
-        }
-
-
-        save(
-            "carts.json",
-            carts
-        );
-
-
-        return json(
-            res,
-            201,
-            {
-                items:
-                    carts[user.sub]
-            }
-        );
-    }
-
-
-    // --------------------------------------------------------
-    // CLEAR CART
-    // --------------------------------------------------------
-
-    if (
-        req.method === "DELETE" &&
-        req.url === "/cart"
-    ) {
-
-        carts[user.sub] = [];
-
-
-        save(
-            "carts.json",
-            carts
-        );
-
-
-        return json(
-            res,
-            200,
-            {
-                items: []
-            }
-        );
-    }
-
-
-    return json(
-        res,
-        404,
-        {
-            error: "not found"
-        }
+    const productResponse = await requestJson(
+      `${PRODUCT_URL}/products/${encodeURIComponent(productId)}`
     );
 
-}).listen(
-    PORT,
-    () =>
-        console.log(
-            `cart-service listening on ${PORT}`
-        )
-);
+    if (productResponse.statusCode !== 200) {
+      return json(res, 404, {
+        error: "Product not found"
+      });
+    }
+
+    const product = productResponse.data.product;
+
+    const cart = getCart(user.sub);
+
+    const existing = cart.items.find(
+      item => item.productId === product.id
+    );
+
+    if (existing) {
+      existing.quantity += quantity;
+    } else {
+      cart.items.push({
+        id: id("cartitem"),
+        productId: product.id,
+        quantity
+      });
+    }
+
+    saveCart(cart);
+
+    return json(res, 200, {
+      message: "Product added to cart",
+      cart
+    });
+  }
+
+  if (
+    req.method === "DELETE" &&
+    url.pathname === "/cart"
+  ) {
+    saveCart({
+      userId: user.sub,
+      items: []
+    });
+
+    return json(res, 200, {
+      message: "Cart cleared"
+    });
+  }
+
+  return json(res, 404, {
+    error: "Route not found"
+  });
+}
+
+server(handler);
