@@ -1,388 +1,332 @@
 const http = require("http");
+const https = require("https");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
 
-const DATA = path.join(process.cwd(), "data");
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 
-fs.mkdirSync(DATA, {
-    recursive: true
-});
-
-
-// ============================================================
-// JSON RESPONSE
-// ============================================================
-
-function json(res, status, body) {
-
-    res.writeHead(status, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store"
-    });
-
-    res.end(JSON.stringify(body));
+function ensureDataDir() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+function json(res, statusCode, data) {
+  const body = JSON.stringify(data);
 
-// ============================================================
-// REQUEST BODY
-// ============================================================
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+    "Cache-Control": "no-store"
+  });
+
+  res.end(body);
+}
 
 function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
 
-    return new Promise((resolve, reject) => {
+    req.on("data", chunk => {
+      body += chunk;
 
-        let raw = "";
-
-        req.on("data", chunk => {
-
-            raw += chunk;
-
-            if (raw.length > 1024 * 1024) {
-
-                req.destroy();
-
-                reject(
-                    new Error("request body too large")
-                );
-            }
-        });
-
-        req.on("end", () => {
-
-            if (!raw) {
-                return resolve({});
-            }
-
-            try {
-
-                resolve(JSON.parse(raw));
-
-            } catch {
-
-                reject(
-                    new Error("invalid JSON")
-                );
-            }
-        });
-
-        req.on("error", reject);
+      if (body.length > 1024 * 1024) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+      }
     });
+
+    req.on("end", () => {
+      if (!body) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(body));
+      } catch {
+        reject(new Error("Invalid JSON"));
+      }
+    });
+
+    req.on("error", reject);
+  });
 }
 
+function load(filename, fallback) {
+  ensureDataDir();
 
-// ============================================================
-// LOAD JSON
-// ============================================================
+  const file = path.join(DATA_DIR, filename);
 
-function load(name, fallback) {
+  if (!fs.existsSync(file)) {
+    save(filename, fallback);
+    return fallback;
+  }
 
-    try {
-
-        return JSON.parse(
-            fs.readFileSync(
-                path.join(DATA, name),
-                "utf8"
-            )
-        );
-
-    } catch {
-
-        return fallback;
-    }
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return fallback;
+  }
 }
 
+function save(filename, data) {
+  ensureDataDir();
 
-// ============================================================
-// SAVE JSON
-// ============================================================
+  const file = path.join(DATA_DIR, filename);
+  const temp = `${file}.tmp`;
 
-function save(name, value) {
-
-    const file = path.join(DATA, name);
-
-    const temporaryFile = `${file}.tmp`;
-
-    fs.writeFileSync(
-        temporaryFile,
-        JSON.stringify(value, null, 2)
-    );
-
-    fs.renameSync(
-        temporaryFile,
-        file
-    );
+  fs.writeFileSync(temp, JSON.stringify(data, null, 2));
+  fs.renameSync(temp, file);
 }
-
-
-// ============================================================
-// ID
-// ============================================================
 
 function id(prefix) {
-
-    return `${prefix}_${crypto.randomUUID()}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
 
-// ============================================================
-// PASSWORD HASH
-// ============================================================
+  const hash = crypto
+    .scryptSync(password, salt, 64)
+    .toString("hex");
 
-function hash(password) {
-
-    const salt =
-        crypto.randomBytes(16).toString("hex");
-
-    const digest =
-        crypto.scryptSync(
-            password,
-            salt,
-            64
-        ).toString("hex");
-
-    return `${salt}:${digest}`;
+  return `${salt}:${hash}`;
 }
 
+function verifyPassword(password, stored) {
+  const [salt, storedHash] = stored.split(":");
 
-// ============================================================
-// PASSWORD VERIFY
-// ============================================================
+  if (!salt || !storedHash) {
+    return false;
+  }
 
-function verify(password, encoded) {
+  const hash = crypto
+    .scryptSync(password, salt, 64)
+    .toString("hex");
 
-    try {
+  const a = Buffer.from(hash, "hex");
+  const b = Buffer.from(storedHash, "hex");
 
-        const [salt, digest] =
-            String(encoded).split(":");
+  if (a.length !== b.length) {
+    return false;
+  }
 
-        if (!salt || !digest) {
-            return false;
-        }
-
-        const actual =
-            crypto.scryptSync(
-                password,
-                salt,
-                64
-            ).toString("hex");
-
-        return crypto.timingSafeEqual(
-            Buffer.from(actual, "hex"),
-            Buffer.from(digest, "hex")
-        );
-
-    } catch {
-
-        return false;
-    }
+  return crypto.timingSafeEqual(a, b);
 }
 
-
-// ============================================================
-// BASE64 URL
-// ============================================================
-
-function b64(value) {
-
-    return Buffer
-        .from(JSON.stringify(value))
-        .toString("base64url");
+function base64url(value) {
+  return Buffer
+    .from(value)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
 }
 
+function base64urlDecode(value) {
+  value = value
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
 
-// ============================================================
-// JWT SIGN
-// ============================================================
+  while (value.length % 4) {
+    value += "=";
+  }
 
-function sign(payload, secret) {
-
-    const header =
-        b64({
-            alg: "HS256",
-            typ: "JWT"
-        });
-
-    const body =
-        b64(payload);
-
-    const signature =
-        crypto
-            .createHmac(
-                "sha256",
-                secret
-            )
-            .update(`${header}.${body}`)
-            .digest("base64url");
-
-    return `${header}.${body}.${signature}`;
+  return Buffer.from(value, "base64").toString("utf8");
 }
 
+function signJwt(payload, secret, expiresInSeconds = 3600) {
+  const header = {
+    alg: "HS256",
+    typ: "JWT"
+  };
 
-// ============================================================
-// JWT VERIFY
-// ============================================================
+  const now = Math.floor(Date.now() / 1000);
+
+  const completePayload = {
+    ...payload,
+    iat: now,
+    exp: now + expiresInSeconds
+  };
+
+  const encodedHeader = base64url(JSON.stringify(header));
+  const encodedPayload = base64url(JSON.stringify(completePayload));
+
+  const unsigned = `${encodedHeader}.${encodedPayload}`;
+
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(unsigned)
+    .digest("base64url");
+
+  return `${unsigned}.${signature}`;
+}
 
 function verifyJwt(token, secret) {
+  try {
+    const parts = token.split(".");
 
-    try {
-
-        const parts =
-            String(token).split(".");
-
-        if (parts.length !== 3) {
-            return null;
-        }
-
-        const [
-            header,
-            body,
-            signature
-        ] = parts;
-
-        const expected =
-            crypto
-                .createHmac(
-                    "sha256",
-                    secret
-                )
-                .update(`${header}.${body}`)
-                .digest("base64url");
-
-        if (
-            signature.length !== expected.length ||
-            !crypto.timingSafeEqual(
-                Buffer.from(signature),
-                Buffer.from(expected)
-            )
-        ) {
-
-            return null;
-        }
-
-        const payload =
-            JSON.parse(
-                Buffer
-                    .from(body, "base64url")
-                    .toString("utf8")
-            );
-
-        if (
-            payload.exp &&
-            Math.floor(Date.now() / 1000)
-                >= payload.exp
-        ) {
-
-            return null;
-        }
-
-        return payload;
-
-    } catch {
-
-        return null;
+    if (parts.length !== 3) {
+      return null;
     }
+
+    const [header, payload, signature] = parts;
+
+    const unsigned = `${header}.${payload}`;
+
+    const expected = crypto
+      .createHmac("sha256", secret)
+      .update(unsigned)
+      .digest("base64url");
+
+    const a = Buffer.from(signature);
+    const b = Buffer.from(expected);
+
+    if (a.length !== b.length) {
+      return null;
+    }
+
+    if (!crypto.timingSafeEqual(a, b)) {
+      return null;
+    }
+
+    const decoded = JSON.parse(base64urlDecode(payload));
+
+    if (decoded.exp && decoded.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+
+    return decoded;
+  } catch {
+    return null;
+  }
 }
 
+function getAuthUser(req) {
+  const authorization = req.headers.authorization || "";
 
-// ============================================================
-// AUTH MIDDLEWARE
-// ============================================================
+  if (!authorization.startsWith("Bearer ")) {
+    return null;
+  }
 
-function auth(req) {
+  const token = authorization.slice(7);
 
-    const value =
-        req.headers.authorization || "";
-
-    if (!value.startsWith("Bearer ")) {
-        return null;
-    }
-
-    return verifyJwt(
-        value.substring(7),
-        process.env.JWT_SECRET ||
-        "shopsphere-local-secret"
-    );
+  return verifyJwt(
+    token,
+    process.env.JWT_SECRET || "shopsphere-local-secret"
+  );
 }
 
+function requireAuth(req, res) {
+  const user = getAuthUser(req);
 
-// ============================================================
-// HTTP REQUEST BETWEEN SERVICES
-// ============================================================
+  if (!user) {
+    json(res, 401, {
+      error: "Authentication required"
+    });
 
-async function request(url, options = {}) {
+    return null;
+  }
 
-    const response =
-        await fetch(url, options);
+  return user;
+}
 
-    const text =
-        await response.text();
+function requestJson(urlString, options = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlString);
 
-    let body;
+    const client = url.protocol === "https:" ? https : http;
 
-    try {
-
-        body = text
-            ? JSON.parse(text)
-            : {};
-
-    } catch {
-
-        body = {
-            raw: text
-        };
-    }
-
-    return {
-        status: response.status,
-        body
+    const requestOptions = {
+      hostname: url.hostname,
+      port: url.port || (url.protocol === "https:" ? 443 : 80),
+      path: `${url.pathname}${url.search}`,
+      method: options.method || "GET",
+      headers: {
+        ...(options.headers || {})
+      },
+      timeout: 5000
     };
+
+    const req = client.request(requestOptions, res => {
+      let body = "";
+
+      res.on("data", chunk => {
+        body += chunk;
+      });
+
+      res.on("end", () => {
+        let data;
+
+        try {
+          data = body ? JSON.parse(body) : {};
+        } catch {
+          data = {
+            raw: body
+          };
+        }
+
+        resolve({
+          statusCode: res.statusCode,
+          data
+        });
+      });
+    });
+
+    req.on("timeout", () => {
+      req.destroy(new Error(`Request timeout: ${urlString}`));
+    });
+
+    req.on("error", reject);
+
+    if (options.body) {
+      req.write(
+        typeof options.body === "string"
+          ? options.body
+          : JSON.stringify(options.body)
+      );
+    }
+
+    req.end();
+  });
 }
-
-
-// ============================================================
-// SERVER WRAPPER
-// ============================================================
 
 function server(handler) {
+  const port = Number(process.env.PORT || 3000);
 
-    return http.createServer(
-        async (req, res) => {
+  const httpServer = http.createServer(async (req, res) => {
+    try {
+      await handler(req, res);
+    } catch (error) {
+      console.error(error);
 
-            try {
+      if (!res.headersSent) {
+        json(res, 500, {
+          error: "Internal server error"
+        });
+      }
+    }
+  });
 
-                await handler(req, res);
+  httpServer.listen(port, "0.0.0.0", () => {
+    console.log(`Service listening on port ${port}`);
+  });
 
-            } catch (error) {
-
-                console.error(error);
-
-                json(
-                    res,
-                    500,
-                    {
-                        error:
-                            error.message ||
-                            "internal server error"
-                    }
-                );
-            }
-        }
-    );
+  return httpServer;
 }
 
-
 module.exports = {
-    json,
-    readBody,
-    load,
-    save,
-    id,
-    hash,
-    verify,
-    sign,
-    auth,
-    request,
-    server
+  json,
+  readBody,
+  load,
+  save,
+  id,
+  hashPassword,
+  verifyPassword,
+  signJwt,
+  verifyJwt,
+  getAuthUser,
+  requireAuth,
+  requestJson,
+  server
 };
