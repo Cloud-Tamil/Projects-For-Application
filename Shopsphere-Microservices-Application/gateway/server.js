@@ -2,350 +2,163 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-
-const PORT =
-    Number(
-        process.env.PORT || 18080
-    );
-
-
-// ============================================================
-// ROUTES
-// ============================================================
+const PORT = Number(process.env.PORT || 18080);
 
 const routes = {
-
-    auth: {
-        env: "AUTH_URL"
-    },
-
-    products: {
-        env: "PRODUCT_URL"
-    },
-
-    cart: {
-        env: "CART_URL"
-    },
-
-    orders: {
-        env: "ORDER_URL"
-    },
-
-    payments: {
-        env: "PAYMENT_URL"
-    }
+  auth: process.env.AUTH_URL || "http://auth-service:4001",
+  products:
+    process.env.PRODUCT_URL ||
+    "http://product-service:4002",
+  cart:
+    process.env.CART_URL ||
+    "http://cart-service:4003",
+  orders:
+    process.env.ORDER_URL ||
+    "http://order-service:4004",
+  payments:
+    process.env.PAYMENT_URL ||
+    "http://payment-service:4005"
 };
 
-
-// ============================================================
-// FIND TARGET
-// ============================================================
-
-function routeTarget(req) {
-
-    for (
-        const [
-            name,
-            config
-        ] of Object.entries(routes)
-    ) {
-
-        const root =
-            `/api/${name}`;
-
-
-        if (
-            req.url === root ||
-            req.url.startsWith(
-                `${root}/`
-            )
-        ) {
-
-            return {
-
-                base:
-                    process.env[
-                        config.env
-                    ],
-
-                path:
-                    req.url.substring(
-                        root.length
-                    )
-            };
-        }
-    }
-
-
-    return null;
-}
-
-
-// ============================================================
-// PROXY
-// ============================================================
-
-function proxy(req, res) {
-
-    const target =
-        routeTarget(req);
-
-
-    if (
-        !target ||
-        !target.base
-    ) {
-
-        return false;
-    }
-
-
-    const url =
-        new URL(
-            target.base +
-            target.path
-        );
-
-
-    const options = {
-
-        method:
-            req.method,
-
-        headers: {
-            ...req.headers,
-
-            host:
-                url.host
-        }
-    };
-
-
-    const upstream =
-        http.request(
-            url,
-            options,
-            response => {
-
-                res.writeHead(
-                    response.statusCode,
-                    response.headers
-                );
-
-                response.pipe(res);
-            }
-        );
-
-
-    upstream.on(
-        "error",
-        error => {
-
-            if (!res.headersSent) {
-
-                res.writeHead(
-                    502,
-                    {
-                        "Content-Type":
-                            "application/json"
-                    }
-                );
-            }
-
-
-            res.end(
-                JSON.stringify({
-                    error:
-                        `upstream unavailable: ${error.message}`
-                })
-            );
-        }
-    );
-
-
-    req.pipe(upstream);
-
-    return true;
-}
-
-
-// ============================================================
-// STATIC FRONTEND
-// ============================================================
-
-function serveFrontend(req, res) {
-
-    const requested =
-        req.url === "/"
-            ? "/frontend/index.html"
-            : `/frontend${req.url}`;
-
-
-    const root =
-        path.resolve(
-            process.cwd()
-        );
-
-
-    const frontendRoot =
-        path.resolve(
-            root,
-            "frontend"
-        );
-
-
-    const file =
-        path.resolve(
-            root,
-            `.${requested}`
-        );
-
-
-    // Prevent path traversal.
-    if (
-        file !== frontendRoot &&
-        !file.startsWith(
-            frontendRoot +
-            path.sep
-        )
-    ) {
-
-        return false;
-    }
-
-
-    if (
-        !fs.existsSync(file) ||
-        !fs.statSync(file).isFile()
-    ) {
-
-        return false;
-    }
-
-
-    const ext =
-        path.extname(file);
-
-
-    let contentType =
-        "application/octet-stream";
-
-
-    if (ext === ".html") {
-
-        contentType =
-            "text/html; charset=utf-8";
-
-    } else if (ext === ".js") {
-
-        contentType =
-            "text/javascript; charset=utf-8";
-
-    } else if (ext === ".css") {
-
-        contentType =
-            "text/css; charset=utf-8";
-    }
-
-
-    res.writeHead(
-        200,
-        {
-            "Content-Type":
-                contentType
-        }
-    );
-
-
-    fs.createReadStream(
-        file
-    ).pipe(res);
-
-
-    return true;
-}
-
-
-// ============================================================
-// SERVER
-// ============================================================
-
-http.createServer(
-    (req, res) => {
-
-
-        // Gateway health
-        if (
-            req.url === "/health"
-        ) {
-
-            res.writeHead(
-                200,
-                {
-                    "Content-Type":
-                        "application/json"
-                }
-            );
-
-
-            return res.end(
-                JSON.stringify({
-                    service:
-                        "gateway",
-
-                    status:
-                        "UP"
-                })
-            );
-        }
-
-
-        // API proxy
-        if (
-            proxy(
-                req,
-                res
-            )
-        ) {
-
-            return;
-        }
-
-
-        // Frontend
-        if (
-            serveFrontend(
-                req,
-                res
-            )
-        ) {
-
-            return;
-        }
-
-
-        // 404
-        res.writeHead(
-            404,
-            {
-                "Content-Type":
-                    "application/json"
-            }
-        );
-
-
-        res.end(
-            JSON.stringify({
-                error:
-                    "not found"
-            })
-        );
-
-    }
-).listen(
-    PORT,
-    () =>
-        console.log(
-            `gateway listening on ${PORT}`
-        )
+const frontendFile = path.join(
+  process.cwd(),
+  "frontend",
+  "index.html"
 );
+
+function sendJson(res, statusCode, data) {
+  const body = JSON.stringify(data);
+
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body)
+  });
+
+  res.end(body);
+}
+
+function getTarget(req) {
+  const match = req.url.match(
+    /^\/api\/(auth|products|cart|orders|payments)(\/.*)?$/
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const service = match[1];
+  const remainingPath = match[2] || "/";
+
+  const base = routes[service];
+
+  return new URL(
+    remainingPath + (req.url.includes("?")
+      ? `?${req.url.split("?")[1]}`
+      : ""),
+    `${base}/`
+  );
+}
+
+async function proxy(req, res, target) {
+  const protocol =
+    target.protocol === "https:" ? require("https") : http;
+
+  const headers = {
+    ...req.headers,
+    host: target.host
+  };
+
+  const options = {
+    hostname: target.hostname,
+    port: target.port,
+    path: `${target.pathname}${target.search}`,
+    method: req.method,
+    headers
+  };
+
+  const proxyRequest = protocol.request(
+    options,
+    proxyResponse => {
+      res.writeHead(
+        proxyResponse.statusCode || 500,
+        proxyResponse.headers
+      );
+
+      proxyResponse.pipe(res);
+    }
+  );
+
+  proxyRequest.on("error", error => {
+    console.error("Gateway proxy error:", error.message);
+
+    if (!res.headersSent) {
+      sendJson(res, 502, {
+        error: "Service unavailable"
+      });
+    }
+  });
+
+  req.pipe(proxyRequest);
+}
+
+const server = http.createServer(
+  async (req, res) => {
+    try {
+      if (
+        req.method === "GET" &&
+        req.url === "/health"
+      ) {
+        return sendJson(res, 200, {
+          service: "gateway",
+          status: "UP"
+        });
+      }
+
+      const target = getTarget(req);
+
+      if (target) {
+        return proxy(req, res, target);
+      }
+
+      if (
+        req.method === "GET" &&
+        (req.url === "/" ||
+          req.url === "/index.html")
+      ) {
+        if (!fs.existsSync(frontendFile)) {
+          return sendJson(res, 404, {
+            error: "Frontend not found"
+          });
+        }
+
+        const content = fs.readFileSync(
+          frontendFile
+        );
+
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8"
+        });
+
+        return res.end(content);
+      }
+
+      return sendJson(res, 404, {
+        error: "Gateway route not found"
+      });
+    } catch (error) {
+      console.error(error);
+
+      if (!res.headersSent) {
+        sendJson(res, 500, {
+          error: "Gateway internal error"
+        });
+      }
+    }
+  }
+);
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(
+    `ShopSphere Gateway running on port ${PORT}`
+  );
+});
