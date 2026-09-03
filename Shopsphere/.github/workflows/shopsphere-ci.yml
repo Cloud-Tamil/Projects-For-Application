@@ -1,0 +1,150 @@
+name: ShopSphere CI
+
+on:
+
+  push:
+    branches:
+      - main
+      - develop
+
+  pull_request:
+    branches:
+      - main
+      - develop
+
+
+permissions:
+
+  contents: read
+
+
+jobs:
+
+  test:
+
+    runs-on:
+      ubuntu-latest
+
+
+    steps:
+
+      # -----------------------------
+      # Checkout
+      # -----------------------------
+
+      - name:
+          Checkout
+
+        uses:
+          actions/checkout@v4
+
+
+      # -----------------------------
+      # Node.js
+      # -----------------------------
+
+      - name:
+          Setup Node.js
+
+        uses:
+          actions/setup-node@v4
+
+        with:
+
+          node-version:
+            22
+
+          cache:
+            npm
+
+
+      # -----------------------------
+      # Install
+      # -----------------------------
+
+      - name:
+          Install dependencies
+
+        run:
+          npm install
+
+
+      # -----------------------------
+      # Start services
+      # -----------------------------
+
+      - name:
+          Start services
+
+        run: |
+
+          nohup node services/auth/server.js \
+            > /tmp/auth.log 2>&1 &
+
+          nohup node services/product/server.js \
+            > /tmp/product.log 2>&1 &
+
+          nohup node services/cart/server.js \
+            > /tmp/cart.log 2>&1 &
+
+          nohup node services/order/server.js \
+            > /tmp/order.log 2>&1 &
+
+          nohup node services/payment/server.js \
+            > /tmp/payment.log 2>&1 &
+
+          nohup node gateway/server.js \
+            > /tmp/gateway.log 2>&1 &
+
+
+      # -----------------------------
+      # Wait
+      # -----------------------------
+
+      - name:
+          Wait for Gateway
+
+        run: |
+
+          for i in {1..30}; do
+
+            curl -fsS \
+              http://localhost:8080/health \
+              && break
+
+            sleep 1
+
+          done
+
+
+      # -----------------------------
+      # Smoke Test
+      # -----------------------------
+
+      - name:
+          Smoke tests
+
+        run:
+          npm run test:smoke
+
+
+      # -----------------------------
+      # Integration Test
+      # -----------------------------
+
+      - name:
+          Integration tests
+
+        run:
+          npm test
+
+
+      # -----------------------------
+      # Docker Build
+      # -----------------------------
+
+      - name:
+          Docker build validation
+
+        run:
+          docker compose build
