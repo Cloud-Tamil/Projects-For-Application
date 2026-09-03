@@ -5,16 +5,22 @@ const path = require("path");
 const PORT = Number(process.env.PORT || 18080);
 
 const routes = {
-  auth: process.env.AUTH_URL || "http://auth-service:4001",
+  auth:
+    process.env.AUTH_URL ||
+    "http://auth-service:4001",
+
   products:
     process.env.PRODUCT_URL ||
     "http://product-service:4002",
+
   cart:
     process.env.CART_URL ||
     "http://cart-service:4003",
+
   orders:
     process.env.ORDER_URL ||
     "http://order-service:4004",
+
   payments:
     process.env.PAYMENT_URL ||
     "http://payment-service:4005"
@@ -52,16 +58,19 @@ function getTarget(req) {
   const base = routes[service];
 
   return new URL(
-    remainingPath + (req.url.includes("?")
-      ? `?${req.url.split("?")[1]}`
-      : ""),
+    remainingPath +
+      (req.url.includes("?")
+        ? `?${req.url.split("?")[1]}`
+        : ""),
     `${base}/`
   );
 }
 
 async function proxy(req, res, target) {
   const protocol =
-    target.protocol === "https:" ? require("https") : http;
+    target.protocol === "https:"
+      ? require("https")
+      : http;
 
   const headers = {
     ...req.headers,
@@ -89,7 +98,10 @@ async function proxy(req, res, target) {
   );
 
   proxyRequest.on("error", error => {
-    console.error("Gateway proxy error:", error.message);
+    console.error(
+      "Gateway proxy error:",
+      error.message
+    );
 
     if (!res.headersSent) {
       sendJson(res, 502, {
@@ -131,12 +143,12 @@ const server = http.createServer(
           });
         }
 
-        const content = fs.readFileSync(
-          frontendFile
-        );
+        const content =
+          fs.readFileSync(frontendFile);
 
         res.writeHead(200, {
-          "Content-Type": "text/html; charset=utf-8"
+          "Content-Type":
+            "text/html; charset=utf-8"
         });
 
         return res.end(content);
