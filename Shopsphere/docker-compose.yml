@@ -1,0 +1,160 @@
+services:
+
+  gateway:
+
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+
+    environment:
+
+      PORT: 8080
+
+      AUTH_URL:
+        http://auth:3001
+
+      PRODUCT_URL:
+        http://product:3002
+
+      CART_URL:
+        http://cart:3003
+
+      ORDER_URL:
+        http://order:3004
+
+      PAYMENT_URL:
+        http://payment:3005
+
+    ports:
+      - "8080:8080"
+
+    depends_on:
+      - auth
+      - product
+      - cart
+      - order
+      - payment
+
+    restart:
+      unless-stopped
+
+
+  auth:
+
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+
+      args:
+        SERVICE: auth
+
+    environment:
+
+      PORT: 3001
+
+      SERVICE_NAME:
+        auth
+
+    expose:
+      - "3001"
+
+    restart:
+      unless-stopped
+
+
+  product:
+
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+
+      args:
+        SERVICE: product
+
+    environment:
+
+      PORT: 3002
+
+      SERVICE_NAME:
+        product
+
+    expose:
+      - "3002"
+
+    restart:
+      unless-stopped
+
+
+  cart:
+
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+
+      args:
+        SERVICE: cart
+
+    environment:
+
+      PORT: 3003
+
+      SERVICE_NAME:
+        cart
+
+    expose:
+      - "3003"
+
+    restart:
+      unless-stopped
+
+
+  order:
+
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+
+      args:
+        SERVICE: order
+
+    environment:
+
+      PORT: 3004
+
+      SERVICE_NAME:
+        order
+
+      PAYMENT_URL:
+        http://payment:3005
+
+    expose:
+      - "3004"
+
+    depends_on:
+      - payment
+
+    restart:
+      unless-stopped
+
+
+  payment:
+
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+
+      args:
+        SERVICE: payment
+
+    environment:
+
+      PORT: 3005
+
+      SERVICE_NAME:
+        payment
+
+    expose:
+      - "3005"
+
+    restart:
+      unless-stopped
